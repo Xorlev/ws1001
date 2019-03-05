@@ -1,0 +1,9 @@
+[package]
+name = "ws1001"
+version = "0.1.0"
+authors = ["Michael Rose <elementation@gmail.com>"]
+
+[dependencies]
+failure = "0.1"
+failure_derive = "0.1"
+log = "0.3"
