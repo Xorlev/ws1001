@@ -1,10 +1,9 @@
 use failure::Error;
 use std;
 use std::ffi::{CStr, FromBytesWithNulError};
-use std::io::{self, Read, Write};
 
 pub struct Command {
-    header: RecordHeader
+    header: RecordHeader,
 }
 
 impl Command {
@@ -21,14 +20,14 @@ impl Command {
                 device_name: "PC2000".into(),
                 command: CommandType::Read,
                 argument,
-            }
+            },
         }
     }
 
-//    pub fn to_bytes(&self) -> Result<&[u8], Error> {
-//        let result = self.header.to_c_record()?;
-//        Ok(unsafe { Command::any_as_u8_slice(&result) })
-//    }
+    //    pub fn to_bytes(&self) -> Result<&[u8], Error> {
+    //        let result = self.header.to_c_record()?;
+    //        Ok(unsafe { Command::any_as_u8_slice(&result) })
+    //    }
 
     unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
         let p_clone = p.clone();
@@ -54,7 +53,7 @@ impl CommandType {
         match command {
             "READ" => CommandType::Read,
             "WRITE" => CommandType::Write,
-            _ => CommandType::Unknown
+            _ => CommandType::Unknown,
         }
     }
 
@@ -115,23 +114,23 @@ impl RecordHeader {
         Ok(header)
     }
 
-//    fn to_c_record(&self) -> Result<CRecordHeader, Error> {
-//        let mut device_name: [u8; 8] = Default::default();
-//        let mut command: [u8; 8] = Default::default();
-//        let mut argument: [u8; 16] = Default::default();
-//
-//        device_name.copy_from_slice(to_bytes_nul_padded(self.device_name.as_str(), 8)?);
-//        command.copy_from_slice(to_bytes_nul_padded(self.command.to_string(), 8)?);
-//        argument.copy_from_slice(to_bytes_nul_padded(self.argument.to_string(), 16)?);
-//
-//        let c_header = CRecordHeader {
-//            device_name,
-//            command,
-//            argument,
-//        };
-//
-//        Ok(c_header)
-//    }
+    //    fn to_c_record(&self) -> Result<CRecordHeader, Error> {
+    //        let mut device_name: [u8; 8] = Default::default();
+    //        let mut command: [u8; 8] = Default::default();
+    //        let mut argument: [u8; 16] = Default::default();
+    //
+    //        device_name.copy_from_slice(to_bytes_nul_padded(self.device_name.as_str(), 8)?);
+    //        command.copy_from_slice(to_bytes_nul_padded(self.command.to_string(), 8)?);
+    //        argument.copy_from_slice(to_bytes_nul_padded(self.argument.to_string(), 16)?);
+    //
+    //        let c_header = CRecordHeader {
+    //            device_name,
+    //            command,
+    //            argument,
+    //        };
+    //
+    //        Ok(c_header)
+    //    }
 }
 
 #[derive(Debug)]
@@ -157,7 +156,7 @@ pub struct TemperatureAndHumidity {
 }
 
 #[derive(Debug)]
-pub struct NowRecord {
+pub struct WeatherRecord {
     record_header: RecordHeader,
     wind: WindRecord,
     inside: TemperatureAndHumidity,
@@ -171,13 +170,11 @@ pub struct NowRecord {
     heat_index: u8,
 }
 
-impl NowRecord {
-    pub fn parse(bytes: &[u8]) -> Result<NowRecord, Error> {
+impl WeatherRecord {
+    pub fn parse(bytes: &[u8]) -> Result<WeatherRecord, Error> {
         let c_record = unsafe { CNowRecord::from_bytes(bytes) };
 
-        println!("{:?}", c_record);
-
-        let record = NowRecord {
+        let record = WeatherRecord {
             record_header: RecordHeader::from_c_record(&c_record.record_header)?,
             wind: WindRecord {
                 direction: c_record.wind_direction,
@@ -222,7 +219,6 @@ pub struct SearchResponse {
 /// These are structures used in decoding responses from the WS-1001 Observer unit. These are C
 /// structs which can be trivially decoded by transmuting the memory.
 
-
 // Offset  Value           Structure       Comment
 // 0x00    HP2000          8 byte string   Name of the weather station
 // 0x08    SEARCH          8 byte string   Command
@@ -250,10 +246,7 @@ pub struct CSearchResponse {
 }
 
 fn from_bytes_nul_padded(bytes: &[u8]) -> Result<&CStr, FromBytesWithNulError> {
-    let nul_index = bytes
-        .iter()
-        .position(|&b| b == b'\0')
-        .unwrap_or(0);
+    let nul_index = bytes.iter().position(|&b| b == b'\0').unwrap_or(0);
 
     CStr::from_bytes_with_nul(&bytes[..nul_index + 1])
 }
