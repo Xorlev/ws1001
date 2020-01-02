@@ -1,7 +1,7 @@
 use async_stream::try_stream;
 use bytes::Bytes;
 use failure::Error;
-use futures::{pin_mut, Stream, StreamExt, SinkExt};
+use futures::{pin_mut, SinkExt, Stream, StreamExt};
 use log::{debug, info};
 use std::time::Duration;
 use tokio::net::UdpSocket;
@@ -59,13 +59,12 @@ impl WeatherRecordStream {
         let timer_stream = tokio::time::interval(self.time_between_queries);
 
         try_stream! {
-                    pin_mut!(timer_stream);
-                    while let Some(_) = timer_stream.next().await {
-        //                let x = Box::pin(self.get_next_record());
-                        let record = self.get_next_record().await?;
-                        yield record
-                    }
-                }
+            pin_mut!(timer_stream);
+            while let Some(_) = timer_stream.next().await {
+                let record = self.get_next_record().await?;
+                yield record
+            }
+        }
     }
 
     async fn get_next_record(&mut self) -> Result<Option<WeatherRecord>, Error> {
