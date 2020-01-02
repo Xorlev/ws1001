@@ -37,12 +37,10 @@ impl WeatherRecordStream {
         // Setup listener.
         let mut listener = TcpListener::bind(LISTEN_ADDRESS).await?;
         let socket = async move {
-            loop {
-                info!("Waiting for requests on {}", LISTEN_ADDRESS);
-                let (socket, addr) = listener.accept().await?;
-                info!("Incoming request from {}", addr);
-                return Ok(socket);
-            }
+            info!("Waiting for requests on {}", LISTEN_ADDRESS);
+            let (socket, addr) = listener.accept().await?;
+            info!("Incoming request from {}", addr);
+            return Ok(socket);
         };
         WeatherRecordStream::broadcast_search().await?;
         let socket: Result<TcpStream, Error> = socket.await;

@@ -1,6 +1,7 @@
 use failure::Error;
 use std;
 use std::ffi::{CStr, FromBytesWithNulError};
+use std::mem;
 
 pub struct Command {
     header: RecordHeader,
@@ -30,9 +31,8 @@ impl Command {
     //    }
 
     unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
-        let p_clone = p.clone();
         ::std::slice::from_raw_parts(
-            (p_clone as *const T) as *const u8,
+            (p as *const T) as *const u8,
             ::std::mem::size_of::<T>(),
         )
     }
@@ -248,7 +248,7 @@ pub struct CSearchResponse {
 fn from_bytes_nul_padded(bytes: &[u8]) -> Result<&CStr, FromBytesWithNulError> {
     let nul_index = bytes.iter().position(|&b| b == b'\0').unwrap_or(0);
 
-    CStr::from_bytes_with_nul(&bytes[..nul_index + 1])
+    CStr::from_bytes_with_nul(&bytes[..=nul_index])
 }
 
 //fn to_bytes_nul_padded(string: &str, length: usize) -> Result<&[u8], Error> {
@@ -340,7 +340,11 @@ struct CNowRecord {
 }
 
 impl CNowRecord {
+    /// We ignore cast_ptr_alignment as we use std::ptr::read_unaligned.
+    #[allow(clippy::cast_ptr_alignment)]
     unsafe fn from_bytes(bytes: &[u8]) -> CNowRecord {
-        std::ptr::read(bytes.as_ptr() as *const _)
+        assert!(bytes.len() >= mem::size_of::<CNowRecord>());
+
+        std::ptr::read_unaligned(bytes.as_ptr() as *const CNowRecord)
     }
 }
