@@ -1,6 +1,5 @@
 use async_stream::try_stream;
 use bytes::Bytes;
-use data::*;
 use failure::Error;
 use futures::{pin_mut, Stream, StreamExt, SinkExt};
 use log::{debug, info};
@@ -10,6 +9,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio_util::codec::{BytesCodec, Framed};
 
 mod data;
+pub use data::*;
 
 type Port = u16;
 
@@ -27,7 +27,7 @@ const LISTEN_ADDRESS: &'static str = "0.0.0.0:6500";
 const SEARCH_MESSAGE: &[u8] = b"PC2000\x00\x00SEARCH\x00\x00\x00\xcd\xfd\x94,\xfb\xe3\x0b\x0c\xfb\xe3\x0bP\xab\xa5w\x00\x00\x00\x00\x00\xdd\xbfw";
 const QUERY_MESSAGE: &[u8] = b"PC2000\x00\x00READ\x00\x00\x00\x00NOWRECORD\x00\x00\x00\x00\x00\x00\x00\xb8\x01\x00\x00\x00\x00\x00\x00";
 
-struct WeatherRecordStream {
+pub struct WeatherRecordStream {
     time_between_queries: Duration,
     socket: Framed<TcpStream, BytesCodec>,
 }
@@ -100,16 +100,4 @@ impl WeatherRecordStream {
 
         Ok(())
     }
-}
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    let stream = WeatherRecordStream::new(Duration::from_secs(10))
-        .await?
-        .start();
-    pin_mut!(stream);
-    while let Some(record) = stream.next().await {
-        println!("{:#?}", record);
-    }
-
-    Ok(())
 }
