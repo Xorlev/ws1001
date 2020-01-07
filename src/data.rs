@@ -1,18 +1,27 @@
-use failure::Error;
+use failure::{format_err, Error};
 use std;
 use std::ffi::{CStr, FromBytesWithNulError};
 use std::mem;
+use bytes::Buf;
 
+#[derive(Debug)]
 pub struct Command {
     header: RecordHeader,
 }
 
 impl Command {
     pub fn search() -> Command {
-        Command::read(ArgumentType::Search)
+        Command {
+            header: RecordHeader {
+                device_name: "PC2000".into(),
+                command: CommandType::Search,
+                argument: ArgumentType::None,
+            },
+        }
     }
+
     pub fn query() -> Command {
-        Command::read(ArgumentType::Query)
+        Command::read(ArgumentType::NowRecord)
     }
 
     fn read(argument: ArgumentType) -> Command {
@@ -25,16 +34,20 @@ impl Command {
         }
     }
 
-    //    pub fn to_bytes(&self) -> Result<&[u8], Error> {
-    //        let result = self.header.to_c_record()?;
-    //        Ok(unsafe { Command::any_as_u8_slice(&result) })
-    //    }
+    pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let result = CSearchRequest {
+            header: self.header.to_c_record()?,
+            _unknown : [0u8; 8]
+        };
 
-    unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+        Ok(unsafe { Command::any_as_u8_slice(&result) })
+    }
+
+    unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> Vec<u8> {
         ::std::slice::from_raw_parts(
             (p as *const T) as *const u8,
             ::std::mem::size_of::<T>(),
-        )
+        ).to_vec()
     }
 }
 
@@ -45,6 +58,7 @@ impl Command {
 pub enum CommandType {
     Unknown,
     Read,
+    Search,
     Write,
 }
 
@@ -52,6 +66,7 @@ impl CommandType {
     fn from_str(command: &str) -> CommandType {
         match command {
             "READ" => CommandType::Read,
+            "SEARCH" => CommandType::Search,
             "WRITE" => CommandType::Write,
             _ => CommandType::Unknown,
         }
@@ -61,6 +76,7 @@ impl CommandType {
         match *self {
             CommandType::Unknown => "UNKNOWN",
             CommandType::Read => "READ",
+            CommandType::Search => "SEARCH",
             CommandType::Write => "WRITE",
         }
     }
@@ -69,6 +85,7 @@ impl CommandType {
 #[derive(Debug)]
 pub enum ArgumentType {
     Unknown,
+    None,
     Query,
     Search,
     NowRecord,
@@ -79,7 +96,6 @@ impl ArgumentType {
     fn from_str(argument: &str) -> ArgumentType {
         match argument {
             "QUERY" => ArgumentType::Query,
-            "SEARCH" => ArgumentType::Search,
             "NOWRECORD" => ArgumentType::NowRecord,
             "HISTORY_DATA" => ArgumentType::HistoryData,
             _ => ArgumentType::Unknown,
@@ -88,6 +104,7 @@ impl ArgumentType {
     fn to_string(&self) -> &str {
         match *self {
             ArgumentType::Unknown => "UNKNOWN",
+            ArgumentType::None => "",
             ArgumentType::Query => "QUERY",
             ArgumentType::Search => "SEARCH",
             ArgumentType::NowRecord => "NOWRECORD",
@@ -114,23 +131,23 @@ impl RecordHeader {
         Ok(header)
     }
 
-    //    fn to_c_record(&self) -> Result<CRecordHeader, Error> {
-    //        let mut device_name: [u8; 8] = Default::default();
-    //        let mut command: [u8; 8] = Default::default();
-    //        let mut argument: [u8; 16] = Default::default();
-    //
-    //        device_name.copy_from_slice(to_bytes_nul_padded(self.device_name.as_str(), 8)?);
-    //        command.copy_from_slice(to_bytes_nul_padded(self.command.to_string(), 8)?);
-    //        argument.copy_from_slice(to_bytes_nul_padded(self.argument.to_string(), 16)?);
-    //
-    //        let c_header = CRecordHeader {
-    //            device_name,
-    //            command,
-    //            argument,
-    //        };
-    //
-    //        Ok(c_header)
-    //    }
+    fn to_c_record(&self) -> Result<CRecordHeader, Error> {
+        let mut device_name: [u8; 8] = Default::default();
+        let mut command: [u8; 8] = Default::default();
+        let mut argument: [u8; 16] = Default::default();
+
+        device_name.copy_from_slice(&to_bytes_nul_padded(self.device_name.as_str(), 8)?);
+        command.copy_from_slice(&to_bytes_nul_padded(self.command.to_string(), 8)?);
+        argument.copy_from_slice(&to_bytes_nul_padded(self.argument.to_string(), 16)?);
+
+        let c_header = CRecordHeader {
+            device_name,
+            command,
+            argument,
+        };
+
+        Ok(c_header)
+    }
 }
 
 #[derive(Debug)]
@@ -241,6 +258,20 @@ pub struct CRecordHeader {
 // 0x40    text            16 byte string  IP address of the weather station
 #[derive(Debug)]
 #[repr(C)]
+pub struct CSearchRequest {
+    header: CRecordHeader,
+    _unknown: [u8; 8],
+}
+
+// Offset  Value           Structure       Comment
+// 0x00    HP2000          8 byte string   Name of the weather station
+// 0x08    SEARCH          8 byte string   Command
+// 0x10                    8 byte string   Argument
+// 0x18                    16 bytes        Not yet deciphered
+// 0x28    text            24 byte string  MAC address of the weather station
+// 0x40    text            16 byte string  IP address of the weather station
+#[derive(Debug)]
+#[repr(C)]
 pub struct CSearchResponse {
     // This may be irrelevant.
 }
@@ -251,19 +282,19 @@ fn from_bytes_nul_padded(bytes: &[u8]) -> Result<&CStr, FromBytesWithNulError> {
     CStr::from_bytes_with_nul(&bytes[..=nul_index])
 }
 
-//fn to_bytes_nul_padded(string: &str, length: usize) -> Result<&[u8], Error> {
-//    if string.len() >= length {
-//        return Err(format_err!("String '{}' >= max length of {}.", string, length))
-//    }
-//
-//    let bytes_to_pad = length - string.len();
-//    let mut bytes = string.to_string();
-//
-//    (0 .. bytes_to_pad)
-//        .for_each(|_| bytes += "\0");
-//
-//    Ok(bytes.as_bytes())
-//}
+fn to_bytes_nul_padded(string: &str, length: usize) -> Result<Vec<u8>, Error> {
+    if string.len() >= length {
+        return Err(format_err!("String '{}' >= max length of {}.", string, length))
+    }
+
+    let bytes_to_pad = length - string.len();
+    let mut bytes = string.to_string();
+
+    (0 .. bytes_to_pad)
+        .for_each(|_| bytes += "\0");
+
+    Ok(bytes.into_bytes())
+}
 
 // Offset  Value       Structure   Comment
 // 0x20    unknown     16 bytes    Yet to be deciphered

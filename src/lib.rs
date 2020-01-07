@@ -16,17 +16,6 @@ type Port = u16;
 const BROADCAST_PORT: Port = 6000;
 const LISTEN_ADDRESS: &'static str = "0.0.0.0:6500";
 
-// https://www.mail-archive.com/weewx-user@googlegroups.com/msg10441/HP1000-gs.py
-
-// This is an encoded c-struct reverse-engineered from wireshark.
-// Offset  Value           Structure       Comment
-// 0x00    PC2000          8 byte string   Identifies the calling station
-// 0x08    SEARCH          8 byte string   Command
-// 0x10    nulls           24 null bytes
-// TODO: construct these using Command.
-const SEARCH_MESSAGE: &[u8] = b"PC2000\x00\x00SEARCH\x00\x00\x00\xcd\xfd\x94,\xfb\xe3\x0b\x0c\xfb\xe3\x0bP\xab\xa5w\x00\x00\x00\x00\x00\xdd\xbfw";
-const QUERY_MESSAGE: &[u8] = b"PC2000\x00\x00READ\x00\x00\x00\x00NOWRECORD\x00\x00\x00\x00\x00\x00\x00\xb8\x01\x00\x00\x00\x00\x00\x00";
-
 pub struct WeatherRecordStream {
     time_between_queries: Duration,
     socket: Framed<TcpStream, BytesCodec>,
@@ -77,11 +66,13 @@ impl WeatherRecordStream {
 
     async fn broadcast_search() -> Result<(), Error> {
         let mut udp_socket = UdpSocket::bind(format!("0.0.0.0:{}", BROADCAST_PORT)).await?;
+        let command = Command::search();
+        let message = command.to_bytes()?;
         udp_socket.set_broadcast(true)?;
         udp_socket.set_multicast_loop_v4(false)?;
         udp_socket
             .send_to(
-                SEARCH_MESSAGE,
+                &message,
                 format!("255.255.255.255:{}", BROADCAST_PORT),
             )
             .await?;
@@ -93,7 +84,9 @@ impl WeatherRecordStream {
 
     async fn query(&mut self) -> Result<(), Error> {
         debug!("Querying..");
-        self.socket.send(Bytes::from(QUERY_MESSAGE)).await?;
+        let command = Command::query();
+        let message = command.to_bytes()?;
+        self.socket.send(Bytes::from(message)).await?;
 
         Ok(())
     }
