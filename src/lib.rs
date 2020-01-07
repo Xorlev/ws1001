@@ -1,12 +1,12 @@
 use async_stream::try_stream;
-use bytes::Bytes;
+use bytes::{BytesMut, BufMut};
 use failure::Error;
 use futures::{pin_mut, SinkExt, Stream, StreamExt};
 use log::{debug, info};
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::net::{TcpListener, TcpStream};
-use tokio_util::codec::{BytesCodec, Framed};
+use tokio_util::codec::Framed;
 
 mod data;
 pub use data::*;
@@ -16,9 +16,33 @@ type Port = u16;
 const BROADCAST_PORT: Port = 6000;
 const LISTEN_ADDRESS: &'static str = "0.0.0.0:6500";
 
+struct Ws1001Codec;
+
+impl tokio_util::codec::Decoder for Ws1001Codec {
+    type Item = Response;
+    type Error = Error;
+
+    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        Ok(Some(Response::from_bytes(src.as_ref())?))
+    }
+}
+
+impl tokio_util::codec::Encoder for Ws1001Codec {
+    type Item = Command;
+    type Error = Error;
+
+    fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
+        let bytes = item.to_bytes()?;
+        dst.put_slice(&bytes);
+
+        Ok(())
+    }
+}
+
+
 pub struct WeatherRecordStream {
     time_between_queries: Duration,
-    socket: Framed<TcpStream, BytesCodec>,
+    socket: Framed<TcpStream, Ws1001Codec>,
 }
 
 impl WeatherRecordStream {
@@ -34,7 +58,7 @@ impl WeatherRecordStream {
         WeatherRecordStream::broadcast_search().await?;
         let socket: Result<TcpStream, Error> = socket.await;
         let socket = socket?;
-        let socket = Framed::new(socket, BytesCodec::new());
+        let socket = Framed::new(socket, Ws1001Codec{});
 
         Ok(WeatherRecordStream {
             time_between_queries,
@@ -56,9 +80,11 @@ impl WeatherRecordStream {
 
     async fn get_next_record(&mut self) -> Result<Option<WeatherRecord>, Error> {
         self.query().await?;
-        if let Some(Ok(bytes)) = self.socket.next().await {
-            let now_record = WeatherRecord::parse(&bytes)?;
-            Ok(Some(now_record))
+        if let Some(Ok(response)) = self.socket.next().await {
+            match response {
+                Response::WeatherRecord(record) => Ok(Some(record)),
+                _ => todo!(),
+            }
         } else {
             Ok(None)
         }
@@ -85,8 +111,7 @@ impl WeatherRecordStream {
     async fn query(&mut self) -> Result<(), Error> {
         debug!("Querying..");
         let command = Command::query();
-        let message = command.to_bytes()?;
-        self.socket.send(Bytes::from(message)).await?;
+        self.socket.send(command).await?;
 
         Ok(())
     }

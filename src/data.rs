@@ -151,25 +151,22 @@ impl RecordHeader {
 }
 
 #[derive(Debug)]
-pub struct WindRecord {
-    pub direction: i16,
-    pub wind_chill: f32,
-    pub wind_speed: f32,
-    pub wind_gust: f32,
+pub enum Response {
+    WeatherRecord(WeatherRecord)
 }
 
-#[derive(Debug)]
-pub struct RainRecord {
-    pub rain_rate: f32,
-    pub daily_rain: f32,
-    pub weekly_rain: f32,
-    pub yearly_rain: f32,
-}
+impl Response {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Response, Error> {
+        let c_record_header = unsafe { CRecordHeader::from_bytes(bytes) };
+        let header = RecordHeader::from_c_record(&c_record_header)?;
 
-#[derive(Debug)]
-pub struct TemperatureAndHumidity {
-    pub temperature: f32,
-    pub humidity_percent: u8,
+        match header.argument {
+            ArgumentType::NowRecord => {
+                Ok(Response::WeatherRecord(WeatherRecord::parse(bytes)?))
+            },
+            _ => todo!(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -226,6 +223,28 @@ impl WeatherRecord {
 }
 
 #[derive(Debug)]
+pub struct WindRecord {
+    pub direction: i16,
+    pub wind_chill: f32,
+    pub wind_speed: f32,
+    pub wind_gust: f32,
+}
+
+#[derive(Debug)]
+pub struct RainRecord {
+    pub rain_rate: f32,
+    pub daily_rain: f32,
+    pub weekly_rain: f32,
+    pub yearly_rain: f32,
+}
+
+#[derive(Debug)]
+pub struct TemperatureAndHumidity {
+    pub temperature: f32,
+    pub humidity_percent: u8,
+}
+
+#[derive(Debug)]
 pub struct SearchResponse {
     name: String,
     command: String,
@@ -247,6 +266,16 @@ pub struct CRecordHeader {
     device_name: [u8; 8],
     command: [u8; 8],
     argument: [u8; 16],
+}
+
+impl CRecordHeader {
+    /// We ignore cast_ptr_alignment as we use std::ptr::read_unaligned.
+    #[allow(clippy::cast_ptr_alignment)]
+    unsafe fn from_bytes(bytes: &[u8]) -> CRecordHeader {
+        assert!(bytes.len() >= mem::size_of::<CRecordHeader>());
+
+        std::ptr::read_unaligned(bytes[0..32].as_ptr() as *const CRecordHeader)
+    }
 }
 
 // Offset  Value           Structure       Comment
